@@ -1,6 +1,6 @@
 export const GRID_SIZE = 12;
-
 export type CellType = 'floor' | 'wall' | 'art';
+export type GalleryType = 'classical' | 'modern' | 'maze';
 
 export interface GridCell {
     x: number;
@@ -8,40 +8,68 @@ export interface GridCell {
     type: CellType;
 }
 
-export function generateMuseumGrid(): GridCell[][] {
-    const grid: GridCell[][] = [];
+// 1 = Wall, 0 = Floor, 2 = Art
+// Redesigned for wide corridors and a safe 3x3 spawn room at the bottom
+const LAYOUTS: Record<GalleryType, number[][]> = {
+    classical: [
+        [1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,2,0,0,0,0,0,0,0,0,2,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,1,1,0,0,1,1,0,0,1],
+        [1,0,0,1,1,0,0,1,1,0,0,1],
+        [1,2,0,0,0,0,0,0,0,0,2,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,1,1,0,0,1,1,0,0,1],
+        [1,0,0,1,1,0,0,1,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1],
+    ],
+    modern: [
+        [1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,2,0,0,0,0,0,0,2,0,1],
+        [1,0,0,1,1,0,0,1,1,0,0,1],
+        [1,0,0,1,1,0,0,1,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,2,2,0,0,0,0,1],
+        [1,0,0,1,1,1,1,1,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1],
+    ],
+    maze: [
+        [1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,2,0,0,1,0,0,0,0,0,2,1],
+        [1,0,0,0,1,0,0,0,0,0,0,1],
+        [1,0,0,0,1,0,0,1,1,1,1,1],
+        [1,1,1,0,1,0,0,1,2,0,0,1],
+        [1,0,0,0,0,0,0,1,0,0,0,1],
+        [1,0,0,0,0,0,0,1,0,0,0,1],
+        [1,1,1,1,1,0,0,1,1,1,0,1],
+        [1,2,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1],
+    ]
+};
 
-    // 1. Generate Base Grid and Walls
-    for (let y = 0; y < GRID_SIZE; y++) {
-        const row: GridCell[] = [];
-        for (let x = 0; x < GRID_SIZE; x++) {
-            // Guarantee outer edges are walls
-            const isEdge = x === 0 || y === 0 || x === GRID_SIZE - 1 || y === GRID_SIZE - 1;
-            // 10% chance for interior walls to keep the space open
-            const isInteriorWall = Math.random() < 0.10;
-            const isWall = isEdge || isInteriorWall;
-            
-            row.push({
-                x,
-                y,
-                type: isWall ? 'wall' : 'floor'
-            });
-        }
-        grid.push(row);
-    }
+// Explicit starting points placed dead-center in the large spawn rooms
+const ENTRANCES: Record<GalleryType, {x: number, y: number}> = {
+    classical: { x: 5, y: 9 },
+    modern: { x: 5, y: 9 },
+    maze: { x: 5, y: 9 }
+};
 
-    // 2. Place Artwork in a random floor space
-    let artPlaced = false;
-    while (!artPlaced) {
-        const rx = Math.floor(Math.random() * (GRID_SIZE - 2)) + 1;
-        const ry = Math.floor(Math.random() * (GRID_SIZE - 2)) + 1;
-        
-        // Only place art if the space is currently an empty floor
-        if (grid[ry][rx].type === 'floor') {
-            grid[ry][rx].type = 'art';
-            artPlaced = true;
-        }
-    }
-
-    return grid;
+export function loadMuseumGrid(type: GalleryType = 'classical'): { grid: GridCell[][], start: {x: number, y: number} } {
+    const matrix = LAYOUTS[type];
+    const grid = matrix.map((row, y) =>
+        row.map((val, x) => ({
+            x,
+            y,
+            type: (val === 1 ? 'wall' : val === 2 ? 'art' : 'floor') as CellType
+        }))
+    );
+    return { grid, start: ENTRANCES[type] };
 }
