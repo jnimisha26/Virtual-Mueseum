@@ -2,28 +2,60 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Interactive Virtual Museum</title>
+    <title>Virtual Museum</title>
+    <link rel="stylesheet" href="/style.css">
   </head>
   <body>
-    <!-- Start Screen UI -->
+    <!-- Start Screen -->
     <div id="start-screen">
-      <h1>Interactive Virtual Museum</h1>
-      <p>Select an architectural layout to enter:</p>
+      <h1>Virtual Museum</h1>
+      <p>Select an exhibition layout to begin.</p>
       <div class="button-group">
         <button id="btn-classical">Classical Wing</button>
         <button id="btn-modern">Modern Gallery</button>
         <button id="btn-maze">Exhibition Maze</button>
       </div>
     </div>
-    
-    <!-- Minimap (Hidden until loaded) -->
-    <canvas id="minimap" width="180" height="180" style="position: absolute; bottom: 20px; right: 20px; z-index: 5; border: 2px solid #fff; border-radius: 5px; background: rgba(0,0,0,0.7); display: none;"></canvas>
 
-    <!-- 3D Canvas Container -->
-    <div id="app"></div>
-    
+    <!-- WebGL Container -->
+    <div id="app" style="display: none;"></div>
+
+    <!-- 2D Minimap -->
+    <canvas id="minimap" width="200" height="200" style="display: none;"></canvas>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" style="display: none;">
+        
+        <div id="hud">
+            <p><b>WASD / Arrows:</b> Move</p>
+            <p><b>Left Click:</b> Inspect Art</p>
+            <p><b>ESC:</b> Exit to Menu</p>
+        </div>
+
+        <div id="greeting-toast" style="display: none;">
+            Hello!
+        </div>
+
+        <!-- Artwork Info Popup (Centered Two-Column Modal) -->
+        <div id="art-info" style="display: none;">
+            <div id="modal-content-wrapper">
+                <!-- Left Side: Image with Zoom & Pan -->
+                <div id="art-image-container">
+                    <img id="art-detail-image" src="" alt="Artwork Detail" />
+                </div>
+                
+                <!-- Right Side: Details & Info -->
+                <div id="art-details-container">
+                    <h2 id="art-title">Artwork Title</h2>
+                    <h4 id="art-artist">Artist Name, Year</h4>
+                    <p id="art-desc">A beautiful exhibition piece on display in the virtual gallery.</p>
+                    <p class="close-hint">Scroll to pan. Shift + Scroll to zoom.<br>Click outside to close.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
