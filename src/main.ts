@@ -75,7 +75,7 @@ const imagePaths = Object.values(artModules).map(mod => mod.default);
 if (imagePaths.length === 0) {
     loadingText.innerText = "No images found in src/textures/! Please add some pictures.";
 } else {
-    Promise.all(imagePaths.map((path, idx) => {
+    Promise.all(imagePaths.map((path) => {
         return new Promise<void>((resolve) => {
             textureLoader.load(path, (texture) => {
                 const aspect = texture.image.width / texture.image.height;
