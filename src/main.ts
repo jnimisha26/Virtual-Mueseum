@@ -28,7 +28,7 @@ let wallObjects: THREE.Mesh[] = [];
 let sceneObjects: THREE.Object3D[] = []; 
 let interactableArt: THREE.Mesh[] = []; 
 let allArtPositions: { x: number; y: number }[] = [];
-let artCounter = 0;
+// let artCounter = 0;
 
 const loadedArtObjects: { gallery_id: string, groupCreator: () => THREE.Group }[] = [];
 
@@ -172,7 +172,7 @@ function resetToMenu() {
     floorCells = [];
     allArtPositions = [];
     activeNPCs = [];
-    artCounter = 0;
+    // artCounter = 0;
 }
 
 // 4. Build Museum with Taller Walls (3.5 units), Roof Ceiling, and Evenly Distributed Studio Lighting
