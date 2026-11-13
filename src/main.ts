@@ -5,26 +5,21 @@ import * as PF from 'pathfinding';
 import { loadMuseumGrid, GRID_SIZE } from './grid'; 
 import type { GalleryType } from './grid';
 
-// ==========================================
-// 🎨 AUTOMATED FOLDER SCANNING
-// ==========================================
-const artModules = import.meta.glob<{ default: string }>('./textures/*.{jpg,jpeg,png,webp}', { eager: true });
-
 // 1. Scene, Camera, & Renderer Setup
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a1a); 
-scene.fog = new THREE.Fog(0x1a1a1a, 10, 50);
+scene.fog = new THREE.Fog(0x1a1a1a, 15, 60); 
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.getElementById('app')?.appendChild(renderer.domElement);
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+const hemisphereLight = new THREE.HemisphereLight(0xfff8ee, 0x444444, 0.8);
+scene.add(hemisphereLight);
+
+const ambientLight = new THREE.AmbientLight(0xfff5e6, 0.4);
 scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-directionalLight.position.set(10, 20, 10);
-scene.add(directionalLight);
 
 // 2. Global Variables for Layout, Animation, & State
 let pfGrid = new PF.Grid(GRID_SIZE, GRID_SIZE); 
@@ -33,8 +28,9 @@ let wallObjects: THREE.Mesh[] = [];
 let sceneObjects: THREE.Object3D[] = []; 
 let interactableArt: THREE.Mesh[] = []; 
 let allArtPositions: { x: number; y: number }[] = [];
+let artCounter = 0;
 
-const loadedArtObjects: { groupCreator: (index: number) => THREE.Group }[] = [];
+const loadedArtObjects: { gallery_id: string, groupCreator: () => THREE.Group }[] = [];
 
 interface NPCData {
     group: THREE.Group | THREE.Mesh;
@@ -66,57 +62,84 @@ let greetingTimeout: ReturnType<typeof setTimeout>;
 
 if (buttonGroup) buttonGroup.style.display = 'none';
 const loadingText = document.createElement('h3');
-loadingText.innerText = "Scanning Folder & Loading Artwork...";
+loadingText.innerText = "Loading Artwork from Database...";
 startScreen?.appendChild(loadingText);
 
 const textureLoader = new THREE.TextureLoader();
-const imagePaths = Object.values(artModules).map(mod => mod.default);
+textureLoader.crossOrigin = "anonymous";
 
-if (imagePaths.length === 0) {
-    loadingText.innerText = "No images found in src/textures/! Please add some pictures.";
-} else {
-    Promise.all(imagePaths.map((path) => {
-        return new Promise<void>((resolve) => {
-            textureLoader.load(path, (texture) => {
-                const aspect = texture.image.width / texture.image.height;
-                let w = 0.8;
-                let h = w / aspect;
-                if (h > 1.2) { h = 1.2; w = h * aspect; }
+// FETCH ARTWORK DYNAMICALLY FROM public/artworks.json
+fetch('/artworks.json')
+    .then(res => res.json())
+    .then((artworkData: any[]) => {
+        if (!artworkData || artworkData.length === 0) {
+            loadingText.innerText = "No artworks found in artworks.json!";
+            return;
+        }
 
-                const geo = new THREE.PlaneGeometry(w, h);
-                const mat = new THREE.MeshStandardMaterial({ map: texture }); 
+        Promise.all(artworkData.map((art) => {
+            return new Promise<void>((resolve) => {
+                textureLoader.load(
+                    art.image_url,
+                    (texture) => {
+                        texture.colorSpace = THREE.SRGBColorSpace;
+                        
+                        const img = texture.image;
+                        const aspect = img.width / img.height;
+                        let w = 0.9;
+                        let h = w / aspect;
+                        if (h > 1.3) { h = 1.3; w = h * aspect; }
 
-                const groupCreator = (index: number) => {
-                    const group = new THREE.Group();
-                    const frameGeo = new THREE.PlaneGeometry(w + 0.1, h + 0.1);
-                    const frameMat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, roughness: 0.2 });
-                    const frameMesh = new THREE.Mesh(frameGeo, frameMat);
-                    frameMesh.position.z = -0.002; 
+                        const geo = new THREE.PlaneGeometry(w, h);
+                        const mat = new THREE.MeshBasicMaterial({ 
+                            map: texture, 
+                            side: THREE.FrontSide 
+                        }); 
+                        mat.needsUpdate = true;
 
-                    const artMesh = new THREE.Mesh(geo, mat);
-                    artMesh.position.z = 0.002; 
-                    
-                    artMesh.userData = { 
-                        title: `Exhibition Piece #${index + 1}`,
-                        imageSrc: path
-                    };
-                    
-                    interactableArt.push(artMesh);
+                        const groupCreator = () => {
+                            const group = new THREE.Group();
+                            const frameGeo = new THREE.PlaneGeometry(w + 0.1, h + 0.1);
+                            const frameMat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, roughness: 0.2 });
+                            const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+                            frameMesh.position.z = -0.002; 
 
-                    group.add(frameMesh);
-                    group.add(artMesh);
-                    return group;
-                };
+                            const artMesh = new THREE.Mesh(geo, mat);
+                            artMesh.position.z = 0.005; 
+                            
+                            artMesh.userData = { 
+                                title: art.title,
+                                artist: `${art.artist} (${art.year})`,
+                                desc: art.description,
+                                imageSrc: art.image_url
+                            };
+                            
+                            interactableArt.push(artMesh);
 
-                loadedArtObjects.push({ groupCreator });
-                resolve();
-            }, undefined, () => resolve());
+                            group.add(frameMesh);
+                            group.add(artMesh);
+                            return group;
+                        };
+
+                        loadedArtObjects.push({ gallery_id: art.gallery_id, groupCreator });
+                        resolve();
+                    },
+                    undefined,
+                    (err) => {
+                        console.error(`Failed to load texture for ${art.title}:`, err);
+                        resolve(); 
+                    }
+                );
+            });
+        })).then(() => {
+            loadingText.style.display = 'none';
+            if (buttonGroup) buttonGroup.style.display = 'flex';
         });
-    })).then(() => {
-        loadingText.style.display = 'none';
-        if (buttonGroup) buttonGroup.style.display = 'flex';
+    })
+    .catch(err => {
+        console.error("Failed to load artworks.json:", err);
+        loadingText.innerText = "Error loading artwork database file.";
     });
-}
 
 document.getElementById('btn-classical')?.addEventListener('click', () => initMuseum('classical'));
 document.getElementById('btn-modern')?.addEventListener('click', () => initMuseum('modern'));
@@ -149,23 +172,62 @@ function resetToMenu() {
     floorCells = [];
     allArtPositions = [];
     activeNPCs = [];
+    artCounter = 0;
 }
 
-// 4. Build the Museum
+// 4. Build Museum with Taller Walls (3.5 units), Roof Ceiling, and Evenly Distributed Studio Lighting
 function buildMuseumLayout(layoutType: GalleryType) {
     pfGrid = new PF.Grid(GRID_SIZE, GRID_SIZE);
     const { grid, start: entrance } = loadMuseumGrid(layoutType);
     
     const floorGeo = new THREE.PlaneGeometry(1, 1);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x222222 }); 
-    const wallGeo = new THREE.BoxGeometry(1, 2, 1); 
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 }); 
+    
+    const ceilingGeo = new THREE.PlaneGeometry(1, 1);
+    const ceilingMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.9 });
 
-    const centerX = GRID_SIZE / 2;
-    const centerY = GRID_SIZE / 2;
-    let artCounter = 0;
+    const wallHeight = 3.5;
+    const wallGeo = new THREE.BoxGeometry(1, wallHeight, 1); 
+
+    let outerWallColor = 0xf7f3e9;
+    let innerWallColor = 0xb5b0a1;
+
+    let targetGalleryId = "Gallery 1";
+
+    if (layoutType === 'classical') {
+        outerWallColor = 0x8a9a86; 
+        innerWallColor = 0x6b343a; 
+        targetGalleryId = "Gallery 1";
+    } else if (layoutType === 'modern') {
+        outerWallColor = 0x35483D; 
+        innerWallColor = 0xd0d4d8; 
+        targetGalleryId = "Gallery 2";
+    } else if (layoutType === 'maze') {
+        outerWallColor = 0xb5b0a1; 
+        innerWallColor = 0xf7f3e9; 
+        targetGalleryId = "Gallery 3";
+    }
+
+    const availableArtworks = loadedArtObjects
+        .filter(art => art.gallery_id === targetGalleryId)
+        .sort(() => Math.random() - 0.5);
+        
+    let currentArtIndex = 0;
 
     interface WallFace { x: number; z: number; dirX: number; dirZ: number; rotY: number; }
     const potentialFaces: WallFace[] = [];
+
+    let minX = GRID_SIZE, maxX = 0, minZ = GRID_SIZE, maxZ = 0;
+    grid.forEach(row => {
+        row.forEach(cell => {
+            if (cell.type === 'wall') {
+                if (cell.x < minX) minX = cell.x;
+                if (cell.x > maxX) maxX = cell.x;
+                if (cell.y < minZ) minZ = cell.y;
+                if (cell.y > maxZ) maxZ = cell.y;
+            }
+        });
+    });
 
     grid.forEach(row => {
         row.forEach(cell => {
@@ -175,13 +237,22 @@ function buildMuseumLayout(layoutType: GalleryType) {
             scene.add(floor);
             sceneObjects.push(floor);
 
-            if (cell.type === 'wall') {
-                const dx = cell.x - centerX;
-                const dy = cell.y - centerY;
-                let wallColor = (Math.abs(dx) > Math.abs(dy)) ? (dx > 0 ? 0x2980b9 : 0xc0392b) : (dy > 0 ? 0x27ae60 : 0xf39c12); 
+            const ceiling = new THREE.Mesh(ceilingGeo, ceilingMat);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.set(cell.x, wallHeight, cell.y);
+            scene.add(ceiling);
+            sceneObjects.push(ceiling);
 
-                const wall = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({ color: wallColor }));
-                wall.position.set(cell.x, 1, cell.y); 
+            if (cell.type === 'wall') {
+                const isOuterWall = (cell.x === minX || cell.x === maxX || cell.y === minZ || cell.y === maxZ);
+                const solidWallColor = isOuterWall ? outerWallColor : innerWallColor;
+
+                const wall = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({ 
+                    color: solidWallColor, 
+                    roughness: 0.85,
+                    metalness: 0.05
+                }));
+                wall.position.set(cell.x, wallHeight / 2, cell.y); 
                 scene.add(wall);
                 pfGrid.setWalkableAt(cell.x, cell.y, false); 
                 wallObjects.push(wall); 
@@ -274,23 +345,60 @@ function buildMuseumLayout(layoutType: GalleryType) {
                     const offsetAlongSegment = (i + 0.5) * (length / count);
                     const centerPos = startPos + offsetAlongSegment;
 
-                    const posX = isHorizontal ? centerPos : fixedPos + (dirX * 0.501);
-                    const posZ = isHorizontal ? fixedPos + (dirZ * 0.501) : centerPos;
+                    const posX = isHorizontal ? centerPos : fixedPos + (dirX * 0.51);
+                    const posZ = isHorizontal ? fixedPos + (dirZ * 0.51) : centerPos; 
 
-                    if (loadedArtObjects.length > 0) {
-                        const randomArt = loadedArtObjects[Math.floor(Math.random() * loadedArtObjects.length)];
+                    let framedGroup: THREE.Group;
+                    if (currentArtIndex < availableArtworks.length) {
+                        framedGroup = availableArtworks[currentArtIndex].groupCreator();
+                        currentArtIndex++;
+                    } else {
+                        // Create blank frame
+                        framedGroup = new THREE.Group();
+                        const frameGeo = new THREE.PlaneGeometry(1.0, 1.0);
+                        const frameMat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, roughness: 0.2 });
+                        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+                        frameMesh.position.z = -0.002; 
+
+                        const blankGeo = new THREE.PlaneGeometry(0.9, 0.9);
+                        const blankMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                        const blankMesh = new THREE.Mesh(blankGeo, blankMat);
+                        blankMesh.position.z = 0.005; 
                         
-                        const framedGroup = randomArt.groupCreator(artCounter++);
-                        framedGroup.position.set(posX, 1.2, posZ);
-                        framedGroup.rotation.y = rotY;
-                        
-                        scene.add(framedGroup);
-                        sceneObjects.push(framedGroup);
-                        
-                        const floorX = Math.round(posX + dirX * 0.5);
-                        const floorZ = Math.round(posZ + dirZ * 0.5);
-                        allArtPositions.push({ x: floorX, y: floorZ }); 
+                        blankMesh.userData = { 
+                            title: "Empty Exhibit",
+                            artist: "Unknown",
+                            desc: "This wall space is currently empty.",
+                            imageSrc: ""
+                        };
+                        interactableArt.push(blankMesh);
+                        framedGroup.add(frameMesh);
+                        framedGroup.add(blankMesh);
                     }
+
+                    framedGroup.position.set(posX, 1.6, posZ);
+                    framedGroup.rotation.y = rotY;
+                    
+                    scene.add(framedGroup);
+                    sceneObjects.push(framedGroup);
+
+                    const fixtureGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.2, 8);
+                    const fixtureMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.2 });
+                    const fixtureMesh = new THREE.Mesh(fixtureGeo, fixtureMat);
+                    fixtureMesh.position.set(posX + (dirX * 0.4), 3.45, posZ + (dirZ * 0.4));
+                    scene.add(fixtureMesh);
+                    sceneObjects.push(fixtureMesh);
+
+                    const artSpotlight = new THREE.SpotLight(0xfff0d1, 4.0, 8, Math.PI / 3, 0.5, 1);
+                    artSpotlight.position.set(posX + (dirX * 0.4), 3.45, posZ + (dirZ * 0.4));
+                    scene.add(artSpotlight);
+                    scene.add(artSpotlight.target);
+                    artSpotlight.target.position.set(posX, 1.6, posZ);
+                    sceneObjects.push(artSpotlight as unknown as THREE.Object3D);
+                    
+                    const floorX = Math.round(posX + dirX * 0.5);
+                    const floorZ = Math.round(posZ + dirZ * 0.5);
+                    allArtPositions.push({ x: floorX, y: floorZ });
                 }
             });
         });
@@ -298,6 +406,15 @@ function buildMuseumLayout(layoutType: GalleryType) {
 
     processSegments(nsSegments, true);  
     processSegments(ewSegments, false); 
+
+    floorCells.forEach((fc, idx) => {
+        if (idx % 3 === 0) {
+            const overheadLight = new THREE.PointLight(0xfff4e0, 1.0, 6, 2);
+            overheadLight.position.set(fc.x, 3.4, fc.y);
+            scene.add(overheadLight);
+            sceneObjects.push(overheadLight as unknown as THREE.Object3D);
+        }
+    });
 
     camera.position.set(entrance.x, 1.5, entrance.y); 
     camera.lookAt(entrance.x, 1.5, entrance.y - 1); 
@@ -309,7 +426,7 @@ function buildMuseumLayout(layoutType: GalleryType) {
     spawnNPC(spawnLoc2.x, spawnLoc2.y);
 }
 
-// 5. Clean Load Original human.glb
+// 5. Load human.glb
 function spawnNPC(startX: number, startY: number) {
     const loader = new GLTFLoader();
     
@@ -462,13 +579,13 @@ window.addEventListener('pointerdown', (e) => {
             const imgEl = document.getElementById('art-detail-image') as HTMLImageElement;
             
             if (titleEl) titleEl.innerText = hitArt.userData.title;
-            if (artistEl) artistEl.innerText = "Unknown Artist, 2026";
-            if (descEl) descEl.innerText = "Information about this specific painting will be loaded here.";
+            if (artistEl) artistEl.innerText = hitArt.userData.artist;
+            if (descEl) descEl.innerText = hitArt.userData.desc;
             
             if (imgEl) {
                 imgEl.src = hitArt.userData.imageSrc;
                 currentZoom = 1;
-                imgEl.style.height = `100%`;
+                imgEl.style.transform = `scale(1)`;
             }
             
             artInfoPopup.style.display = 'block';
@@ -477,7 +594,6 @@ window.addEventListener('pointerdown', (e) => {
     }
 });
 
-// IMAGE ZOOM & PAN LOGIC
 const imgContainer = document.getElementById('art-image-container');
 if (imgContainer) {
     imgContainer.addEventListener('wheel', (e) => {
@@ -495,7 +611,7 @@ if (imgContainer) {
             
             const imgEl = document.getElementById('art-detail-image');
             if (imgEl) {
-                imgEl.style.height = `${currentZoom * 100}%`;
+                imgEl.style.transform = `scale(${currentZoom})`;
             }
         }
     }, { passive: false });
