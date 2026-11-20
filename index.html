@@ -1,59 +1,128 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Virtual Museum</title>
-    <link rel="stylesheet" href="/style.css">
+    <title>The Virtual Museum — 3D Exhibition</title>
   </head>
   <body>
-    <!-- Start Screen -->
-    <div id="start-screen">
-      <h1>Virtual Museum</h1>
-      <p>Select an exhibition layout to begin.</p>
-      <div class="button-group">
-        <button id="btn-classical">Classical Wing</button>
-        <button id="btn-modern">Modern Gallery</button>
-        <button id="btn-maze">Exhibition Maze</button>
+    <!-- 3D WebGL Viewport -->
+    <div id="app"></div>
+
+    <!-- 3D Reception Overlay: Welcome Splash & Coverflow Gallery Selector -->
+    <div id="start-screen" class="reception-overlay">
+      <!-- Step 1: Initial Welcome Splash -->
+      <div id="welcome-splash" class="welcome-splash glass-panel">
+        <span class="museum-eyebrow">Curated Digital Exhibition</span>
+        <h1 class="museum-title">THE VIRTUAL MUSEUM</h1>
+        <p class="museum-subtitle">Welcome to Virtual Experience</p>
+        <button id="btn-enter-experience" class="primary-gold-btn">Enter Reception</button>
+      </div>
+
+      <!-- Step 2: Centered Coverflow Glass Tiles with Gallery Slideshow -->
+      <div id="gallery-selector" class="gallery-selector hidden">
+        <div class="coverflow-stage">
+          <!-- Card 0: Classical Wing (gallery1) -->
+          <div class="coverflow-card is-left" data-index="0" data-gallery="classical">
+            <img id="slide-img-0" class="card-slideshow-img" alt="Classical Wing Preview" />
+            <div class="card-glass-overlay">
+              <div class="card-header-row">
+                <div>
+                  <h3>Classical Wing</h3>
+                  <span class="card-wing-label">Gallery 1 Collection</span>
+                </div>
+                <button id="btn-classical" class="explore-btn">Explore</button>
+              </div>
+              <p>
+                Renaissance and Baroque oil masterpieces displayed across warm sage and crimson halls.
+              </p>
+            </div>
+          </div>
+
+          <!-- Card 1: Modern Wing (gallery2) -->
+          <div class="coverflow-card is-center" data-index="1" data-gallery="modern">
+            <img id="slide-img-1" class="card-slideshow-img" alt="Modern Wing Preview" />
+            <div class="card-glass-overlay">
+              <div class="card-header-row">
+                <div>
+                  <h3>Modern Wing</h3>
+                  <span class="card-wing-label">Gallery 2 Collection</span>
+                </div>
+                <button id="btn-modern" class="explore-btn">Explore</button>
+              </div>
+              <p>
+                Bold contemporary works and abstract compositions set inside minimalist forest-slate galleries.
+              </p>
+            </div>
+          </div>
+
+          <!-- Card 2: Labyrinth Maze (gallery3) -->
+          <div class="coverflow-card is-right" data-index="2" data-gallery="maze">
+            <img id="slide-img-2" class="card-slideshow-img" alt="Labyrinth Maze Preview" />
+            <div class="card-glass-overlay">
+              <div class="card-header-row">
+                <div>
+                  <h3>Labyrinth Maze</h3>
+                  <span class="card-wing-label">Gallery 3 Collection</span>
+                </div>
+                <button id="btn-maze" class="explore-btn">Explore</button>
+              </div>
+              <p>
+                An exploratory winding exhibition where curated highlights await around every corner.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Pill Navigation Bar -->
+        <div class="carousel-nav-pill glass-panel">
+          <button id="btn-prev-gallery" class="nav-circle-btn" aria-label="Previous Gallery">&#8249;</button>
+          <div class="nav-pill-info">
+            <strong id="active-gallery-title">Modern Wing</strong>
+            <span id="active-gallery-sub">Gallery 2 • Contemporary &amp; Abstract</span>
+          </div>
+          <button id="btn-next-gallery" class="nav-circle-btn" aria-label="Next Gallery">&#8250;</button>
+        </div>
       </div>
     </div>
 
-    <!-- WebGL Container -->
-    <div id="app" style="display: none;"></div>
+    <!-- Gallery Transition Loader -->
+   <div id="gallery-loader" class="gallery-loader hidden" style="display: none;">
+      <div class="loader-card glass-panel">
+        <div class="museum-spinner"></div>
+        <span class="museum-eyebrow">Preparing Exhibition</span>
+        <h3 id="loader-gallery-name">Entering Gallery...</h3>
+        <p>Arranging artworks, lighting, and gallery space</p>
+      </div>
+    </div>
 
-    <!-- 2D Minimap -->
-    <canvas id="minimap" width="200" height="200" style="display: none;"></canvas>
+    <!-- Minimap Radar -->
+    <canvas id="minimap" width="160" height="160" style="display: none;"></canvas>
 
-    <!-- UI Overlay -->
+    <!-- In-Gallery HUD & Controls Hint -->
     <div id="ui-layer" style="display: none;">
-        
-        <div id="hud">
-            <p><b>WASD / Arrows:</b> Move</p>
-            <p><b>Left Click:</b> Inspect Art</p>
-            <p><b>ESC:</b> Exit to Menu</p>
-        </div>
+      <div id="crosshair">+</div>
+      <div id="controls-hint">
+        <strong>WASD / Arrows</strong> Move &amp; Turn &nbsp;|&nbsp;
+        <strong>Click Artwork</strong> Inspect &nbsp;|&nbsp;
+        <strong>ESC</strong> Reception
+      </div>
+    </div>
 
-        <div id="greeting-toast" style="display: none;">
-            Hello!
-        </div>
+    <!-- Curator / Visitor Greeting Toast -->
+    <div id="greeting-toast" style="display: none;"></div>
 
-        <!-- Artwork Info Popup (Centered Two-Column Modal) -->
-        <div id="art-info" style="display: none;">
-            <div id="modal-content-wrapper">
-                <!-- Left Side: Image with Zoom & Pan -->
-                <div id="art-image-container">
-                    <img id="art-detail-image" src="" alt="Artwork Detail" />
-                </div>
-                
-                <!-- Right Side: Details & Info -->
-                <div id="art-details-container">
-                    <h2 id="art-title">Artwork Title</h2>
-                    <h4 id="art-artist">Artist Name, Year</h4>
-                    <p id="art-desc">A beautiful exhibition piece on display in the virtual gallery.</p>
-                    <p class="close-hint">Scroll to pan. Shift + Scroll to zoom.<br>Click outside to close.</p>
-                </div>
-            </div>
-        </div>
+    <!-- Artwork Detail Inspection Modal -->
+    <div id="art-info" style="display: none;">
+      <div id="art-image-container">
+        <img id="art-detail-image" src="" alt="Artwork Preview" />
+      </div>
+      <div id="art-text-content">
+        <h2 id="art-title">Artwork Title</h2>
+        <h4 id="art-artist">Artist (Year)</h4>
+        <p id="art-desc">Artwork description.</p>
+        <small>Shift / Ctrl + Scroll to zoom • Click outside to close</small>
+      </div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
