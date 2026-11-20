@@ -1,9 +1,7 @@
 import * as THREE from 'three';
-import * as SkeletonUtils  from 'three/addons/utils/SkeletonUtils.js';
-import { AvatarController } from './avatarController';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { AvatarController } from './AvatarController';
 
-
-// Load images from src/gallery1, src/gallery2, src/gallery3 (or src/assets/gallery1..3)
 const localGalleryModules = import.meta.glob(
   [
     './gallery1/*.{png,jpg,jpeg,webp,avif,PNG,JPG,JPEG}',
@@ -27,9 +25,9 @@ export interface ReceptionHandle {
   update: (delta: number) => void;
   cleanup: () => void;
   triggerGreeting: () => void;
+  playDoorTransition: (onComplete: () => void) => void;
 }
 
-// Light Cream (#E5D6C5) stone tile floor texture
 function createCreamFloorTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -62,7 +60,6 @@ function createCreamFloorTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-// Solid Deep Plum (#57364F) wall texture
 function createPlumPlasterTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -87,7 +84,6 @@ function createPlumPlasterTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-// Dark Chocolate (#49352F) architectural slatted wood texture
 function createDarkChocolateTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -115,7 +111,6 @@ function createDarkChocolateTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-// Wall-mounted Reception Board Texture
 function createReceptionBoardTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 2048;
@@ -184,10 +179,7 @@ function createHangingPendant(
   canopyRing.position.y = ceilingY - 0.035;
   pendant.add(canopyRing);
 
-  const rod = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.008, 0.008, dropLength, 12),
-    goldMat
-  );
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, dropLength, 12), goldMat);
   rod.position.y = ceilingY - dropLength / 2;
   pendant.add(rod);
 
@@ -315,6 +307,77 @@ function createFloorLamp(
   return lamp;
 }
 
+function createGalleryDoubleDoors(
+  woodMat: THREE.Material,
+  goldMat: THREE.Material
+): {
+  portalGroup: THREE.Group;
+  leftDoorPivot: THREE.Group;
+  rightDoorPivot: THREE.Group;
+} {
+  const portalGroup = new THREE.Group();
+  const doorWidth = 0.82;
+  const doorHeight = 2.65;
+  const totalWidth = doorWidth * 2;
+
+  const topHeader = new THREE.Mesh(new THREE.BoxGeometry(totalWidth + 0.34, 0.18, 0.18), goldMat);
+  topHeader.position.set(0, doorHeight + 0.09, 0);
+  portalGroup.add(topHeader);
+
+  [-totalWidth / 2 - 0.09, totalWidth / 2 + 0.09].forEach((px) => {
+    const pilaster = new THREE.Mesh(new THREE.BoxGeometry(0.16, doorHeight, 0.16), goldMat);
+    pilaster.position.set(px, doorHeight / 2, 0);
+    portalGroup.add(pilaster);
+  });
+
+  const glowBackdrop = new THREE.Mesh(
+    new THREE.PlaneGeometry(totalWidth, doorHeight),
+    new THREE.MeshBasicMaterial({ color: 0xffe8c2 })
+  );
+  glowBackdrop.position.set(0, doorHeight / 2, -0.02);
+  portalGroup.add(glowBackdrop);
+
+  const buildDoorLeaf = (isLeft: boolean) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(isLeft ? -totalWidth / 2 : totalWidth / 2, 0, 0.04);
+
+    const leafOffset = isLeft ? doorWidth / 2 : -doorWidth / 2;
+
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(doorWidth - 0.02, doorHeight, 0.07), woodMat);
+    leaf.position.set(leafOffset, doorHeight / 2, 0);
+    leaf.castShadow = true;
+    pivot.add(leaf);
+
+    const panelTrim = new THREE.Mesh(
+      new THREE.BoxGeometry(doorWidth - 0.24, doorHeight - 0.38, 0.082),
+      goldMat
+    );
+    panelTrim.position.set(leafOffset, doorHeight / 2, 0);
+    pivot.add(panelTrim);
+
+    const innerPanel = new THREE.Mesh(
+      new THREE.BoxGeometry(doorWidth - 0.3, doorHeight - 0.44, 0.088),
+      woodMat
+    );
+    innerPanel.position.set(leafOffset, doorHeight / 2, 0);
+    pivot.add(innerPanel);
+
+    const handleX = isLeft ? doorWidth - 0.14 : -doorWidth + 0.14;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.36, 12), goldMat);
+    handle.position.set(handleX, 1.15, 0.06);
+    pivot.add(handle);
+
+    return pivot;
+  };
+
+  const leftDoorPivot = buildDoorLeaf(true);
+  const rightDoorPivot = buildDoorLeaf(false);
+  portalGroup.add(leftDoorPivot);
+  portalGroup.add(rightDoorPivot);
+
+  return { portalGroup, leftDoorPivot, rightDoorPivot };
+}
+
 export function buildReceptionScene(
   scene: THREE.Scene,
   camera: THREE.PerspectiveCamera,
@@ -325,6 +388,7 @@ export function buildReceptionScene(
   const previousFog = scene.fog;
   const previousBackground = scene.background;
   let slideshowTimer: ReturnType<typeof setInterval> | null = null;
+  let doorAnimFrame: number | null = null;
 
   scene.background = new THREE.Color(0x57364f);
   scene.fog = new THREE.Fog(0x57364f, 14, 30);
@@ -338,9 +402,8 @@ export function buildReceptionScene(
     receptionObjects.push(obj);
   };
 
-  // Materials
   const floorMat = new THREE.MeshStandardMaterial({
-    map: createCreamFloorTexture(), // Light cream #E5D6C5
+    map: createCreamFloorTexture(),
     roughness: 0.42,
     metalness: 0.05,
   });
@@ -357,7 +420,6 @@ export function buildReceptionScene(
     metalness: 0.12,
   });
 
-  // Clean #57364F Walls (No paintings on walls)
   const wallMat = new THREE.MeshStandardMaterial({
     map: createPlumPlasterTexture(),
     roughness: 0.72,
@@ -365,13 +427,13 @@ export function buildReceptionScene(
   });
 
   const deskSlattedMat = new THREE.MeshStandardMaterial({
-    map: createDarkChocolateTexture(), // Dark chocolate #49352F
+    map: createDarkChocolateTexture(),
     roughness: 0.38,
     metalness: 0.08,
   });
 
   const deskSolidMat = new THREE.MeshStandardMaterial({
-    color: 0x49352f, // Dark chocolate #49352F
+    color: 0x49352f,
     roughness: 0.35,
     metalness: 0.1,
   });
@@ -390,14 +452,14 @@ export function buildReceptionScene(
   const pendantGlobeMat = new THREE.MeshStandardMaterial({
     color: 0xfff5e4,
     emissive: 0xffcfa0,
-    emissiveIntensity: 1.35,
+    emissiveIntensity: 1.45,
     roughness: 0.25,
   });
 
   const lampShadeMat = new THREE.MeshStandardMaterial({
     color: 0xe5d6c5,
     emissive: 0xffd7ba,
-    emissiveIntensity: 0.65,
+    emissiveIntensity: 0.75,
     roughness: 0.6,
     side: THREE.DoubleSide,
   });
@@ -432,7 +494,6 @@ export function buildReceptionScene(
   backCrown.position.set(0, wallHeight - 0.03, -4.43);
   addObj(backCrown);
 
-  // Clean #57364F Walls
   const backWall = new THREE.Mesh(new THREE.BoxGeometry(roomWidth, wallHeight, 0.3), wallMat);
   backWall.position.set(0, wallHeight / 2, -4.6);
   addObj(backWall, false, true);
@@ -449,27 +510,36 @@ export function buildReceptionScene(
   backBaseboard.position.set(0, 0.06, -4.43);
   addObj(backBaseboard);
 
-  // 2. Central Reception Board Plaque
-  const boardBacking = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.88, 0.05), goldMat);
-  boardBacking.position.set(0, 2.82, -4.42);
+  // 2. Central Reception Board Plaque & Double Gallery Doors
+  const boardBacking = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.82, 0.05), goldMat);
+  boardBacking.position.set(-1.35, 2.82, -4.42);
   addObj(boardBacking, true, false);
 
   const boardFace = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.32, 0.8),
+    new THREE.PlaneGeometry(3.02, 0.74),
     new THREE.MeshStandardMaterial({
       map: createReceptionBoardTexture(),
       roughness: 0.45,
       metalness: 0.15,
     })
   );
-  boardFace.position.set(0, 2.82, -4.39);
+  boardFace.position.set(-1.35, 2.82, -4.39);
   addObj(boardFace);
 
-  // 3. Aesthetic Hanging Pendant Lights
+  const doorX = 2.45;
+  const doorZ = -4.42;
+  const { portalGroup, leftDoorPivot, rightDoorPivot } = createGalleryDoubleDoors(
+    deskSolidMat,
+    goldMat
+  );
+  portalGroup.position.set(doorX, 0, doorZ);
+  addObj(portalGroup);
+
+  // 3. Aesthetic Hanging Pendant Fixtures (Emissive globes — zero extra dynamic PointLights)
   const deskPendantConfigs = [
-    { x: -1.05, z: -2.05, drop: 0.95 },
-    { x: 0, z: -2.05, drop: 0.72 },
-    { x: 1.05, z: -2.05, drop: 0.95 },
+    { x: -1.4, z: -2.05, drop: 0.95 },
+    { x: -0.45, z: -2.05, drop: 0.72 },
+    { x: 0.5, z: -2.05, drop: 0.95 },
   ];
 
   deskPendantConfigs.forEach(({ x, z, drop }) => {
@@ -482,13 +552,9 @@ export function buildReceptionScene(
     );
     pendant.position.set(x, 0, z);
     addObj(pendant);
-
-    const bulbLight = new THREE.PointLight(0xffdcb0, 3.0, 5.5, 1.6);
-    bulbLight.position.set(x, wallHeight - drop - 0.14, z);
-    addObj(bulbLight);
   });
 
-  [-3.15, 3.15].forEach((xPos) => {
+  [-3.45, 3.75].forEach((xPos) => {
     const loungePendant = createHangingPendant(
       wallHeight,
       1.18,
@@ -496,50 +562,50 @@ export function buildReceptionScene(
       ceilingBeamMat,
       pendantGlobeMat
     );
-    loungePendant.position.set(xPos, 0, -0.85);
+    loungePendant.position.set(xPos, 0, -0.75);
     addObj(loungePendant);
   });
 
-  // 4. Dark Chocolate (#49352F) Reception Desk
+  // 4. Dark Chocolate Reception Desk
   const deskGroup = new THREE.Group();
-  deskGroup.position.set(0, 0, -2.05);
+  deskGroup.position.set(-0.45, 0, -2.05);
 
-  const plinth = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.1, 0.72), goldMat);
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.85, 0.1, 0.72), goldMat);
   plinth.position.set(0, 0.05, 0);
   plinth.castShadow = true;
   deskGroup.add(plinth);
 
-  const deskBody = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.92, 0.82), deskSlattedMat);
+  const deskBody = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.92, 0.82), deskSlattedMat);
   deskBody.position.set(0, 0.56, 0);
   deskBody.castShadow = true;
   deskBody.receiveShadow = true;
   deskGroup.add(deskBody);
 
-  const counterTop = new THREE.Mesh(new THREE.BoxGeometry(3.38, 0.07, 0.98), deskSolidMat);
+  const counterTop = new THREE.Mesh(new THREE.BoxGeometry(3.18, 0.07, 0.98), deskSolidMat);
   counterTop.position.set(0, 1.055, 0.02);
   counterTop.castShadow = true;
   counterTop.receiveShadow = true;
   deskGroup.add(counterTop);
 
-  const goldReveal = new THREE.Mesh(new THREE.BoxGeometry(3.24, 0.025, 0.85), goldMat);
+  const goldReveal = new THREE.Mesh(new THREE.BoxGeometry(3.04, 0.025, 0.85), goldMat);
   goldReveal.position.set(0, 1.01, 0);
   deskGroup.add(goldReveal);
 
   const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.025, 24), goldMat);
-  lampBase.position.set(1.18, 1.1, 0.12);
+  lampBase.position.set(1.1, 1.1, 0.12);
   deskGroup.add(lampBase);
 
   const lampStem = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.34, 12), goldMat);
-  lampStem.position.set(1.18, 1.27, 0.12);
+  lampStem.position.set(1.1, 1.27, 0.12);
   deskGroup.add(lampStem);
 
   const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.14, 0.12, 24), goldMat);
-  lampShade.position.set(1.18, 1.44, 0.12);
+  lampShade.position.set(1.1, 1.44, 0.12);
   deskGroup.add(lampShade);
 
   const vaseMat = new THREE.MeshStandardMaterial({ color: 0xf2d3c9, roughness: 0.3 });
   const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 0.24, 24), vaseMat);
-  vase.position.set(-1.2, 1.21, 0.1);
+  vase.position.set(-1.12, 1.21, 0.1);
   vase.castShadow = true;
   deskGroup.add(vase);
 
@@ -547,52 +613,44 @@ export function buildReceptionScene(
 
   // 5. Visitor Lounge Seating Areas
   const leftChair = createSofaChair(chairUpholsteryMat, deskSolidMat, goldMat);
-  leftChair.position.set(-3.15, 0, -0.75);
+  leftChair.position.set(-3.45, 0, -0.65);
   leftChair.rotation.y = Math.PI / 2.4;
   addObj(leftChair);
 
   const leftSideTable = createAccentTable(deskSolidMat, goldMat);
-  leftSideTable.position.set(-3.2, 0, -1.55);
+  leftSideTable.position.set(-3.5, 0, -1.45);
   addObj(leftSideTable);
 
   const leftFloorLamp = createFloorLamp(goldMat, deskSolidMat, lampShadeMat);
-  leftFloorLamp.position.set(-4.05, 0, -1.45);
+  leftFloorLamp.position.set(-4.25, 0, -1.35);
   addObj(leftFloorLamp);
 
-  const leftLampLight = new THREE.PointLight(0xffdfb8, 3.0, 5.5, 1.6);
-  leftLampLight.position.set(-4.05, 1.62, -1.45);
-  addObj(leftLampLight);
-
   const rightChair = createSofaChair(chairUpholsteryMat, deskSolidMat, goldMat);
-  rightChair.position.set(3.15, 0, -0.75);
+  rightChair.position.set(3.85, 0, -0.65);
   rightChair.rotation.y = -Math.PI / 2.4;
   addObj(rightChair);
 
   const rightSideTable = createAccentTable(deskSolidMat, goldMat);
-  rightSideTable.position.set(3.2, 0, -1.55);
+  rightSideTable.position.set(3.9, 0, -1.45);
   addObj(rightSideTable);
 
   const rightFloorLamp = createFloorLamp(goldMat, deskSolidMat, lampShadeMat);
-  rightFloorLamp.position.set(4.05, 0, -1.45);
+  rightFloorLamp.position.set(4.45, 0, -1.35);
   addObj(rightFloorLamp);
 
-  const rightLampLight = new THREE.PointLight(0xffdfb8, 3.0, 5.5, 1.6);
-  rightLampLight.position.set(4.05, 1.62, -1.45);
-  addObj(rightLampLight);
-
-  // 6. Layered Warm Architectural Lighting
-  const lobbyAmbient = new THREE.HemisphereLight(0xffe9dc, 0xe5d6c5, 0.85);
+  // 6. Streamlined 3-Light Reception Rig (Clean & Fast)
+  const lobbyAmbient = new THREE.HemisphereLight(0xffe9dc, 0xe5d6c5, 1.45);
   addObj(lobbyAmbient);
 
-  const boardSpot = new THREE.SpotLight(0xffe9dc, 10.5, 10, Math.PI / 4, 0.65, 1);
-  boardSpot.position.set(0, 3.65, -2.5);
-  boardSpot.target.position.set(0, 2.6, -4.35);
+  const boardSpot = new THREE.SpotLight(0xffe9dc, 9.0, 10, Math.PI / 4, 0.65, 1);
+  boardSpot.position.set(-1.35, 3.65, -2.5);
+  boardSpot.target.position.set(-1.35, 2.6, -4.35);
   addObj(boardSpot);
   addObj(boardSpot.target);
 
-  const curatorSpot = new THREE.SpotLight(0xfff0e6, 11.5, 12, Math.PI / 3.2, 0.55, 1);
-  curatorSpot.position.set(1.1, 3.55, -0.2);
-  curatorSpot.target.position.set(0, 1.25, -2.95);
+  const curatorSpot = new THREE.SpotLight(0xfff0e6, 10.5, 12, Math.PI / 3.2, 0.55, 1);
+  curatorSpot.position.set(0.6, 3.55, -0.2);
+  curatorSpot.target.position.set(-0.45, 1.25, -2.95);
   curatorSpot.castShadow = true;
   curatorSpot.shadow.mapSize.set(1024, 1024);
   curatorSpot.shadow.bias = -0.0005;
@@ -601,8 +659,8 @@ export function buildReceptionScene(
 
   // 7. Spawn Receptionist Behind Desk — Strictly Idle
   const receptionist = SkeletonUtils.clone(gltfScene) as THREE.Group;
-  receptionist.position.set(0, 0, -2.95);
-  receptionist.lookAt(0, 0, 1.8);
+  receptionist.position.set(-0.45, 0, -2.95);
+  receptionist.lookAt(-0.45, 0, 1.8);
   receptionist.traverse((child) => {
     if ((child as THREE.Mesh).isMesh) {
       child.castShadow = true;
@@ -614,10 +672,11 @@ export function buildReceptionScene(
   const avatar = animations.length > 0 ? new AvatarController(receptionist, animations) : null;
   avatar?.play('standing_idle');
 
+  camera.rotation.order = 'YXZ';
   camera.position.set(0, 1.66, 2.15);
-  camera.lookAt(0, 1.44, -2.35);
+  camera.lookAt(0.25, 1.44, -2.35);
 
-  // 8. Coverflow Carousel + Gallery 1 / 2 / 3 Slideshow Logic
+  // 8. Coverflow Carousel + Gallery Slideshow Logic
   const welcomeSplash = document.getElementById('welcome-splash');
   const gallerySelector = document.getElementById('gallery-selector');
   const enterBtn = document.getElementById('btn-enter-experience');
@@ -639,7 +698,6 @@ export function buildReceptionScene(
     { title: 'Labyrinth Maze', sub: 'Gallery 3 • Curated Highlights' },
   ];
 
-  // Collect images from src/gallery1..3 first, and merge with public/artworks.json (/gallery1..3)
   const slidePools: string[][] = [
     getLocalFolderImages('gallery1'),
     getLocalFolderImages('gallery2'),
@@ -662,14 +720,12 @@ export function buildReceptionScene(
     }
   };
 
-  // Initialize immediately if local src/gallery1..3 folders exist
   [0, 1, 2].forEach((idx) => {
     if (slidePools[idx].length > 0 && slideImgs[idx]) {
       slideImgs[idx]!.src = slidePools[idx][0];
     }
   });
 
-  // Also load image URLs from /artworks.json (for public/gallery1, public/gallery2, public/gallery3)
   fetch('/artworks.json')
     .then((res) => res.json())
     .then((artworks: { gallery_id: string; image_url: string }[]) => {
@@ -692,7 +748,6 @@ export function buildReceptionScene(
     })
     .catch(() => {});
 
-  // Cycle slideshow images every 3.2 seconds
   slideshowTimer = setInterval(() => {
     [0, 1, 2].forEach((idx) => {
       if (slidePools[idx].length > 1) {
@@ -702,7 +757,7 @@ export function buildReceptionScene(
     });
   }, 3200);
 
-  let activeIndex = 1; // Center card starts on Modern Wing
+  let activeIndex = 1;
 
   const updateCoverflowPositions = () => {
     cards.forEach((card, idx) => {
@@ -722,7 +777,6 @@ export function buildReceptionScene(
 
   cards.forEach((card, idx) => {
     card.onclick = (e) => {
-      // Allow clicking side cards to bring them into center focus
       if (idx !== activeIndex && !(e.target as HTMLElement).closest('.explore-btn')) {
         activeIndex = idx;
         updateCoverflowPositions();
@@ -760,11 +814,52 @@ export function buildReceptionScene(
     avatar?.play('standing_idle');
   };
 
+  const playDoorTransition = (onComplete: () => void) => {
+    const startPos = camera.position.clone();
+    const endPos = new THREE.Vector3(doorX, 1.62, doorZ + 0.55);
+    const startQuat = camera.quaternion.clone();
+
+    const targetLookMatrix = new THREE.Matrix4().lookAt(
+      endPos,
+      new THREE.Vector3(doorX, 1.55, doorZ - 1.5),
+      new THREE.Vector3(0, 1, 0)
+    );
+    const endQuat = new THREE.Quaternion().setFromRotationMatrix(targetLookMatrix);
+
+    const durationMs = 1150;
+    const startTime = performance.now();
+
+    const stepTransition = (now: number) => {
+      const rawT = Math.min(1, (now - startTime) / durationMs);
+      const ease = rawT < 0.5 ? 4 * rawT * rawT * rawT : 1 - Math.pow(-2 * rawT + 2, 3) / 2;
+
+      camera.position.lerpVectors(startPos, endPos, ease);
+      camera.quaternion.slerpQuaternions(startQuat, endQuat, Math.min(1, ease * 1.25));
+
+      const doorAngle = ease * (Math.PI * 0.52);
+      leftDoorPivot.rotation.y = doorAngle;
+      rightDoorPivot.rotation.y = -doorAngle;
+
+      if (rawT < 1) {
+        doorAnimFrame = requestAnimationFrame(stepTransition);
+      } else {
+        doorAnimFrame = null;
+        onComplete();
+      }
+    };
+
+    doorAnimFrame = requestAnimationFrame(stepTransition);
+  };
+
   return {
     update: (delta: number) => {
       avatar?.update(delta);
     },
     cleanup: () => {
+      if (doorAnimFrame !== null) {
+        cancelAnimationFrame(doorAnimFrame);
+        doorAnimFrame = null;
+      }
       if (slideshowTimer) {
         clearInterval(slideshowTimer);
         slideshowTimer = null;
@@ -775,5 +870,6 @@ export function buildReceptionScene(
       scene.background = previousBackground;
     },
     triggerGreeting,
+    playDoorTransition,
   };
 }

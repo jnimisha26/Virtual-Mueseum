@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>The Virtual Museum — 3D Exhibition</title>
   </head>
   <body>
@@ -87,25 +87,49 @@
     </div>
 
     <!-- Gallery Transition Loader -->
-   <div id="gallery-loader" class="gallery-loader hidden" style="display: none;">
+    <div id="gallery-loader" class="gallery-loader hidden" style="display: none;">
       <div class="loader-card glass-panel">
         <div class="museum-spinner"></div>
         <span class="museum-eyebrow">Preparing Exhibition</span>
         <h3 id="loader-gallery-name">Entering Gallery...</h3>
-        <p>Arranging artworks, lighting, and gallery space</p>
+        <p>Opening gallery doors and arranging exhibition lighting</p>
       </div>
     </div>
 
     <!-- Minimap Radar -->
     <canvas id="minimap" width="160" height="160" style="display: none;"></canvas>
 
-    <!-- In-Gallery HUD & Controls Hint -->
+    <!-- In-Gallery HUD & Controls -->
     <div id="ui-layer" style="display: none;">
       <div id="crosshair">+</div>
+
+      <!-- Hover Highlight Floating Prompt -->
+      <div id="hover-prompt" class="hidden">Click to Inspect</div>
+
+      <!-- Top-Left Gallery Toolbar -->
+      <div id="gallery-toolbar">
+        <button id="btn-exit-reception" class="hud-pill-btn secondary">
+          Reception
+        </button>
+      </div>
+
+      <!-- Desktop Controls Hint -->
       <div id="controls-hint">
-        <strong>WASD / Arrows</strong> Move &amp; Turn &nbsp;|&nbsp;
-        <strong>Click Artwork</strong> Inspect &nbsp;|&nbsp;
+        <strong>WASD</strong> Walk &nbsp;|&nbsp;
+        <strong>&larr; &rarr; Arrows</strong> Turn &nbsp;|&nbsp;
+        <strong>Click Art</strong> Inspect &nbsp;|&nbsp;
         <strong>ESC</strong> Reception
+      </div>
+
+      <!-- Mobile / Touch Virtual Controls -->
+      <div id="mobile-controls">
+        <div id="touch-joystick-zone">
+          <div id="touch-joystick-base">
+            <div id="touch-joystick-knob"></div>
+          </div>
+        </div>
+        <div id="touch-look-zone"></div>
+        <button id="btn-mobile-inspect" class="mobile-inspect-btn hidden">Inspect Artwork</button>
       </div>
     </div>
 
@@ -114,6 +138,7 @@
 
     <!-- Artwork Detail Inspection Modal -->
     <div id="art-info" style="display: none;">
+      <button id="btn-close-art" class="close-art-btn" aria-label="Close">&times;</button>
       <div id="art-image-container">
         <img id="art-detail-image" src="" alt="Artwork Preview" />
       </div>
@@ -121,7 +146,7 @@
         <h2 id="art-title">Artwork Title</h2>
         <h4 id="art-artist">Artist (Year)</h4>
         <p id="art-desc">Artwork description.</p>
-        <small>Shift / Ctrl + Scroll to zoom • Click outside to close</small>
+        <small>Shift / Ctrl + Scroll to zoom • Drag or scroll when zoomed • Click outside to close</small>
       </div>
     </div>
 

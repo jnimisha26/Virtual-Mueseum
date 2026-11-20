@@ -1,6 +1,7 @@
 /* Base Reset & Viewport */
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -14,6 +15,7 @@ body {
   font-family: "Helvetica Neue", Arial, sans-serif;
   color: #f2d3c9;
   user-select: none;
+  touch-action: none;
 }
 
 #app {
@@ -43,7 +45,7 @@ body {
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
 }
 
-/* Reception Overlay (Transparent backdrop so the 3D reception lobby shines through) */
+/* Reception Overlay */
 #start-screen.reception-overlay {
   position: fixed !important;
   inset: 0 !important;
@@ -125,7 +127,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 26px;
+  gap: 24px;
   animation: fadeUp 0.45s ease;
 }
 
@@ -194,11 +196,20 @@ body {
 }
 
 @media (max-width: 720px) {
+  .coverflow-stage {
+    height: 390px;
+  }
+  .coverflow-card {
+    height: 375px;
+  }
   .coverflow-card.is-left {
-    transform: translateX(-95px) scale(0.82);
+    transform: translateX(-75px) scale(0.82);
   }
   .coverflow-card.is-right {
-    transform: translateX(95px) scale(0.82);
+    transform: translateX(75px) scale(0.82);
+  }
+  .welcome-splash {
+    padding: 32px 24px;
   }
 }
 
@@ -340,17 +351,18 @@ body {
   inset: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(24, 16, 20, 0.62);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(24, 16, 20, 0.42);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
+  transition: opacity 0.35s ease;
 }
 
 .loader-card {
-  padding: 36px 48px;
+  padding: 34px 44px;
   border-radius: 20px;
   text-align: center;
   display: flex;
@@ -408,13 +420,22 @@ body {
   position: fixed;
   top: 20px;
   right: 20px;
-  width: 160px;
-  height: 160px;
+  width: 150px;
+  height: 150px;
   background: rgba(24, 17, 21, 0.78);
   border: 1.5px solid rgba(197, 164, 109, 0.6);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   z-index: 15;
+}
+
+@media (max-width: 640px) {
+  #minimap {
+    width: 110px;
+    height: 110px;
+    top: 14px;
+    right: 14px;
+  }
 }
 
 /* In-Gallery HUD & Crosshair */
@@ -434,6 +455,75 @@ body {
   font-weight: 300;
   color: rgba(242, 211, 201, 0.75);
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+#crosshair.is-hovering {
+  color: #dfc28d;
+  transform: translate(-50%, -50%) scale(1.3);
+}
+
+/* Hover Highlight Floating Pill */
+#hover-prompt {
+  position: fixed;
+  top: calc(50% + 26px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 18px;
+  border-radius: 999px;
+  background: rgba(36, 25, 30, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid #c5a46d;
+  color: #f2d3c9;
+  font-size: 0.84rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  animation: fadeUp 0.18s ease;
+}
+
+/* Top-Left Toolbar (Reception Button) */
+#gallery-toolbar {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+  z-index: 16;
+}
+
+.hud-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: rgba(36, 25, 30, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(197, 164, 109, 0.65);
+  color: #f2d3c9;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.hud-pill-btn:hover {
+  background: rgba(87, 54, 79, 0.9);
+  transform: translateY(-1px);
+}
+
+.hud-pill-btn.secondary {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #e5d6c5;
 }
 
 #controls-hint {
@@ -447,7 +537,7 @@ body {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(197, 164, 109, 0.45);
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   color: #e5d6c5;
   white-space: nowrap;
 }
@@ -456,22 +546,102 @@ body {
   color: #c5a46d;
 }
 
+/* Mobile / Touch Controls */
+#mobile-controls {
+  display: none;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+@media (hover: none) and (pointer: coarse), (max-width: 820px) {
+  #controls-hint {
+    display: none;
+  }
+  #mobile-controls {
+    display: block;
+  }
+}
+
+#touch-joystick-zone {
+  position: fixed;
+  left: 22px;
+  bottom: 26px;
+  width: 124px;
+  height: 124px;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#touch-joystick-base {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(36, 25, 30, 0.55);
+  border: 1.5px solid rgba(197, 164, 109, 0.55);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+#touch-joystick-knob {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f2d3c9, #c5a46d);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  transform: translate(0px, 0px);
+  transition: transform 0.05s linear;
+}
+
+#touch-look-zone {
+  position: fixed;
+  top: 76px;
+  right: 0;
+  bottom: 0;
+  width: 56vw;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.mobile-inspect-btn {
+  position: fixed;
+  right: 22px;
+  bottom: 44px;
+  padding: 13px 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #dfc28d 0%, #c5a46d 100%);
+  color: #24191e;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: none;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  z-index: 18;
+}
+
 /* NPC Greeting Toast */
 #greeting-toast {
   position: fixed;
-  top: 24px;
+  top: 72px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 12px 26px;
+  padding: 11px 24px;
   border-radius: 999px;
-  background: rgba(44, 31, 38, 0.88);
+  background: rgba(44, 31, 38, 0.92);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid #c5a46d;
   color: #f2d3c9;
-  font-size: 0.94rem;
+  font-size: 0.9rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   z-index: 30;
+  max-width: 90vw;
+  text-align: center;
 }
 
 /* Artwork Detail Inspection Modal */
@@ -481,21 +651,43 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(860px, 92vw);
-  max-height: 86vh;
-  background: rgba(36, 25, 30, 0.92);
+  max-height: 88vh;
+  background: rgba(36, 25, 30, 0.94);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border: 1.5px solid #c5a46d;
   border-radius: 18px;
-  padding: 28px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75);
+  padding: 26px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.78);
   z-index: 40;
   overflow-y: auto;
+  touch-action: auto;
+}
+
+.close-art-btn {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(197, 164, 109, 0.5);
+  background: rgba(24, 17, 21, 0.8);
+  color: #f2d3c9;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.close-art-btn:hover {
+  background: #c5a46d;
+  color: #24191e;
 }
 
 #art-image-container {
   width: 100%;
-  height: 54vh;
+  height: 52vh;
   overflow: auto;
   display: grid;
   place-items: center;
@@ -503,11 +695,12 @@ body {
   border-radius: 12px;
   border: 1px solid rgba(197, 164, 109, 0.3);
   margin-bottom: 18px;
+  touch-action: pan-x pan-y;
 }
 
 #art-detail-image {
   max-width: 100%;
-  max-height: 52vh;
+  max-height: 50vh;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -526,17 +719,10 @@ body {
   cursor: grabbing;
 }
 
-/* #art-detail-image {
-  max-width: 100%;
-  max-height: 50vh;
-  object-fit: contain;
-  transition: transform 0.15s ease;
-} */
-
 #art-text-content h2 {
   margin: 0 0 6px 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.6rem;
+  font-size: 1.55rem;
   color: #f2d3c9;
 }
 
@@ -549,13 +735,13 @@ body {
 
 #art-text-content p {
   margin: 0 0 14px 0;
-  font-size: 0.95rem;
+  font-size: 0.94rem;
   line-height: 1.55;
   color: #e5d6c5;
 }
 
 #art-text-content small {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: rgba(229, 214, 197, 0.7);
 }
