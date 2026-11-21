@@ -328,7 +328,7 @@ export function buildReceptionScene(
     const updateCarouselClasses = () => {
         const total = cards.length;
         const leftIdx = (activeCardIndex - 1 + total) % total;
-        const rightIdx = (activeCardIndex + 1) % total;
+        // const rightIdx = (activeCardIndex + 1) % total;
 
         cards.forEach((card, idx) => {
             card.classList.remove('is-center', 'is-left', 'is-right');
