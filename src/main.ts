@@ -1,7 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import * as  SkeletonUtils  from 'three/addons/utils/SkeletonUtils.js';
+import * as SkeletonUtils  from 'three/addons/utils/SkeletonUtils.js';
 import * as PF from 'pathfinding';
 import { loadMuseumGrid, GRID_SIZE } from './grid';
 import type { GalleryType } from './grid';
@@ -31,7 +31,7 @@ const ambientLight = new THREE.AmbientLight(0xfff5e6, 0.4);
 scene.add(ambientLight);
 
 // 2. Global Variables for Layout, Animation, & State
-let appMode: 'reception' | 'museum' = 'reception';
+let appMode: 'loading' | 'reception' | 'museum' = 'loading';
 let receptionHandle: ReceptionHandle | null = null;
 let isTransitioningGallery = false;
 
@@ -53,7 +53,11 @@ interface ArtSpot {
 
 let allArtPositions: ArtSpot[] = [];
 
-const loadedArtObjects: { gallery_id: string; groupCreator: () => THREE.Group }[] = [];
+const loadedArtObjects: {
+    gallery_id: string;
+    image_url: string;
+    groupCreator: () => THREE.Group;
+}[] = [];
 
 interface NPCData {
     group: THREE.Group | THREE.Mesh;
@@ -74,6 +78,26 @@ let activeNPCs: NPCData[] = [];
 let cachedCharacterGLTF: { scene: THREE.Group; animations: THREE.AnimationClip[] } | null = null;
 const walkSpeed = 1.0;
 const clock = new THREE.Clock();
+
+const NPC_GREETING_LINES = [
+     "Hello! Beautiful day for art, isn't it?",
+    'Good to see you—take your time exploring the collection!',
+    'Lovely brushwork in this wing, is it not?',
+    "Hey! How are you?",
+    'Hi there! Enjoying the museum?',
+    "Hello! Is this your first time here?",
+    "Hey! Nice to see you here.",
+];
+let lastGreetingLineIdx = -1;
+
+function getNextGreetingLine(): string {
+    let idx = Math.floor(Math.random() * NPC_GREETING_LINES.length);
+    if (idx === lastGreetingLineIdx && NPC_GREETING_LINES.length > 1) {
+        idx = (idx + 1) % NPC_GREETING_LINES.length;
+    }
+    lastGreetingLineIdx = idx;
+    return NPC_GREETING_LINES[idx];
+}
 
 // Proximity Light Culling State
 const lastLightUpdatePos = new THREE.Vector3(Infinity, Infinity, Infinity);
@@ -105,6 +129,16 @@ const hoverPromptEl = document.getElementById('hover-prompt');
 const crosshairEl = document.getElementById('crosshair');
 const exitReceptionBtn = document.getElementById('btn-exit-reception');
 const mobileInspectBtn = document.getElementById('btn-mobile-inspect');
+
+// Show Initial Full-Screen Loader Immediately While Museum & Assets Load
+if (startScreen) startScreen.style.display = 'none';
+if (minimapCanvas) minimapCanvas.style.display = 'none';
+if (uiLayer) uiLayer.style.display = 'none';
+if (loaderGalleryName) loaderGalleryName.innerText = 'Preparing Grand Reception...';
+if (galleryLoader) {
+    galleryLoader.classList.remove('hidden');
+    galleryLoader.style.display = 'flex';
+}
 
 const staticMinimapCanvas = document.createElement('canvas');
 staticMinimapCanvas.width = 160;
@@ -139,34 +173,52 @@ function bakeStaticMinimap(grid: { x: number; y: number; type: string }[][]) {
 let isPopupOpen = false;
 let greetingTimeout: ReturnType<typeof setTimeout>;
 
+// Smooth Damped Movement & Look Velocity State
+let smoothForwardVel = 0;
+let smoothRightVel = 0;
+let smoothTurnVel = 0;
+let targetPitch = 0;
+
 const textureLoader = new THREE.TextureLoader();
 textureLoader.crossOrigin = 'anonymous';
 
-function enterReception() {
+function enterReception(skipWelcome = false) {
     appMode = 'reception';
     isTransitioningGallery = false;
     renderer.shadowMap.enabled = true;
 
-    if (galleryLoader) {
-        galleryLoader.classList.add('hidden');
-        galleryLoader.style.display = 'none';
-    }
+    smoothForwardVel = 0;
+    smoothRightVel = 0;
+    smoothTurnVel = 0;
+
     if (appContainer) appContainer.style.display = 'block';
     if (minimapCanvas) minimapCanvas.style.display = 'none';
     if (uiLayer) uiLayer.style.display = 'none';
-    if (startScreen) startScreen.style.display = 'flex';
 
-    if (cachedCharacterGLTF && !receptionHandle) {
+    if (!receptionHandle) {
         receptionHandle = buildReceptionScene(
             scene,
             camera,
-            cachedCharacterGLTF.scene,
-            cachedCharacterGLTF.animations
+            cachedCharacterGLTF ? cachedCharacterGLTF.scene : null,
+            cachedCharacterGLTF ? cachedCharacterGLTF.animations : [],
+            loadedArtObjects.map((a) => ({ gallery_id: a.gallery_id, image_url: a.image_url })),
+            skipWelcome
         );
     }
+
+    // Compile reception shaders & render one frame behind the loader before revealing Welcome
+    renderer.render(scene, camera);
+
+    requestAnimationFrame(() => {
+        if (startScreen) startScreen.style.display = 'flex';
+        if (galleryLoader) {
+            galleryLoader.classList.add('hidden');
+            galleryLoader.style.display = 'none';
+        }
+    });
 }
 
-// Preload character model and artwork database
+// Preload character model and artwork database completely before showing Welcome screen
 const characterPromise = new Promise<void>((resolve) => {
     const loader = new GLTFLoader();
     loader.load(
@@ -245,7 +297,11 @@ const artworksPromise = fetch('/artworks.json')
                                 return group;
                             };
 
-                            loadedArtObjects.push({ gallery_id: art.gallery_id, groupCreator });
+                            loadedArtObjects.push({
+                                gallery_id: art.gallery_id,
+                                image_url: art.image_url,
+                                groupCreator,
+                            });
                             resolve();
                         },
                         undefined,
@@ -263,7 +319,7 @@ const artworksPromise = fetch('/artworks.json')
     });
 
 Promise.all([characterPromise, artworksPromise]).then(() => {
-    enterReception();
+    enterReception(false);
 });
 
 document.getElementById('btn-classical')?.addEventListener('click', () => initMuseum('classical'));
@@ -304,11 +360,18 @@ function initMuseum(layoutType: GalleryType) {
                 renderer.shadowMap.enabled = false;
 
                 appMode = 'museum';
+                smoothForwardVel = 0;
+                smoothRightVel = 0;
+                smoothTurnVel = 0;
+
                 if (appContainer) appContainer.style.display = 'block';
                 if (minimapCanvas) minimapCanvas.style.display = 'block';
                 if (uiLayer) uiLayer.style.display = 'block';
 
                 buildMuseumLayout(layoutType);
+
+                // Warm up gallery frame before hiding loader
+                renderer.render(scene, camera);
 
                 setTimeout(() => {
                     if (galleryLoader) {
@@ -329,28 +392,33 @@ function initMuseum(layoutType: GalleryType) {
 }
 
 function resetToMenu() {
-    if (appMode === 'reception') return;
+    if (appMode !== 'museum') return;
 
     clearHoveredArt();
 
     if (artInfoPopup) artInfoPopup.style.display = 'none';
     if (greetingToast) greetingToast.style.display = 'none';
-    if (galleryLoader) {
-        galleryLoader.classList.add('hidden');
-        galleryLoader.style.display = 'none';
-    }
     isPopupOpen = false;
 
-    sceneObjects.forEach((obj) => scene.remove(obj));
-    activeNPCs.forEach((npc) => scene.remove(npc.group));
-    sceneObjects = [];
-    galleryLights = [];
-    interactableArt = [];
-    floorCells = [];
-    allArtPositions = [];
-    activeNPCs = [];
+    if (loaderGalleryName) loaderGalleryName.innerText = 'Returning to Reception...';
+    if (galleryLoader) {
+        galleryLoader.classList.remove('hidden');
+        galleryLoader.style.display = 'flex';
+    }
 
-    enterReception();
+    requestAnimationFrame(() => {
+        sceneObjects.forEach((obj) => scene.remove(obj));
+        activeNPCs.forEach((npc) => scene.remove(npc.group));
+        sceneObjects = [];
+        galleryLights = [];
+        interactableArt = [];
+        floorCells = [];
+        allArtPositions = [];
+        activeNPCs = [];
+
+        // Return directly to the gallery selection tiles without repeating the welcome splash
+        enterReception(true);
+    });
 }
 
 // Shared Geometries for Furniture
@@ -590,7 +658,6 @@ function buildMuseumLayout(layoutType: GalleryType) {
     scene.add(ceilingInstanced);
     sceneObjects.push(floorInstanced, ceilingInstanced);
 
-    // Batch Outer & Inner Walls into 2 InstancedMeshes (2 draw calls instead of 250+)
     if (outerWallCoords.length > 0) {
         const outerWallInstanced = new THREE.InstancedMesh(
             wallGeo,
@@ -922,6 +989,7 @@ function buildMuseumLayout(layoutType: GalleryType) {
     camera.rotation.order = 'YXZ';
     camera.position.set(entrance.x, 1.5, entrance.y);
     camera.lookAt(entrance.x, 1.5, entrance.y - 1);
+    targetPitch = camera.rotation.x;
 
     lastLightUpdatePos.set(Infinity, Infinity, Infinity);
     updateNearbyLights();
@@ -1145,8 +1213,10 @@ if (joystickZone && joystickKnob) {
         }
 
         joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-        touchMoveX = dx / maxRadius;
-        touchMoveZ = -dy / maxRadius;
+        const normX = dx / maxRadius;
+        const normZ = -dy / maxRadius;
+        touchMoveX = Math.abs(normX) < 0.14 ? 0 : normX * Math.abs(normX);
+        touchMoveZ = Math.abs(normZ) < 0.14 ? 0 : normZ * Math.abs(normZ);
     };
 
     joystickZone.addEventListener('touchstart', (e) => {
@@ -1207,11 +1277,11 @@ if (touchLookZone) {
                 if (Math.hypot(dx, dy) > 4) {
                     touchMoved = true;
                 }
-                const touchSensitivity = 0.0072;
+                const touchSensitivity = 0.0042;
                 camera.rotation.y -= dx * touchSensitivity;
-                camera.rotation.x = Math.max(
+                targetPitch = Math.max(
                     -maxPitch,
-                    Math.min(maxPitch, camera.rotation.x - dy * touchSensitivity)
+                    Math.min(maxPitch, targetPitch - dy * touchSensitivity)
                 );
                 lastTouchX = t.clientX;
                 lastTouchY = t.clientY;
@@ -1363,16 +1433,18 @@ if (imgContainer) {
     imgContainer.addEventListener('pointercancel', stopDragging);
 }
 
-// Frame-rate independent speeds (units per second / radians per second)
-const playerMoveSpeedPerSec = 5.2;
-const playerTurnSpeedPerSec = 2.6;
+// Comfortable, Smooth Gallery Stroll Speeds & Damping
+const playerMoveSpeedPerSec = 3.4;
+const playerTurnSpeedPerSec = 1.55;
+const moveDamping = 9.0;
+const turnDamping = 11.0;
 
 const forwardVector = new THREE.Vector3();
 const rightVector = new THREE.Vector3();
 const npcCollisionRadius = 0.75;
 const npcWallClearance = 0.38;
 
-// O(1) Grid-Based Wall Collision Check (replaces heavy per-frame raycasting)
+// O(1) Grid-Based Wall Collision Check
 function isPositionWalkable(x: number, z: number, radius = 0.36): boolean {
     const minGx = Math.floor(x - radius + 0.5);
     const maxGx = Math.floor(x + radius + 0.5);
@@ -1405,13 +1477,21 @@ function tryMovePlayer(dx: number, dz: number): boolean {
     let moved = false;
 
     const targetX = camera.position.x + dx;
-    if (dx !== 0 && isPositionWalkable(targetX, camera.position.z) && !isBlockedByNPC(targetX, camera.position.z)) {
+    if (
+        dx !== 0 &&
+        isPositionWalkable(targetX, camera.position.z) &&
+        !isBlockedByNPC(targetX, camera.position.z)
+    ) {
         camera.position.x = targetX;
         moved = true;
     }
 
     const targetZ = camera.position.z + dz;
-    if (dz !== 0 && isPositionWalkable(camera.position.x, targetZ) && !isBlockedByNPC(camera.position.x, targetZ)) {
+    if (
+        dz !== 0 &&
+        isPositionWalkable(camera.position.x, targetZ) &&
+        !isBlockedByNPC(camera.position.x, targetZ)
+    ) {
         camera.position.z = targetZ;
         moved = true;
     }
@@ -1506,6 +1586,10 @@ function animate() {
     const now = Date.now();
     const delta = Math.min(clock.getDelta(), 0.1);
 
+    if (appMode === 'loading') {
+        return;
+    }
+
     if (appMode === 'reception') {
         receptionHandle?.update(delta);
         renderer.render(scene, camera);
@@ -1547,47 +1631,62 @@ function animate() {
         clearHoveredArt();
     }
 
-    // Manual Walk + Head-Bob
+    // Smooth Damped Walk & Rotation + Gentle Head-Bob
+    const moveBlend = 1 - Math.exp(-moveDamping * delta);
+    const turnBlend = 1 - Math.exp(-turnDamping * delta);
+
+    let targetForward = 0;
+    let targetRight = 0;
+    let targetTurn = 0;
+
     if (!isPopupOpen) {
-        const frameTurn = playerTurnSpeedPerSec * delta;
-        const frameMove = playerMoveSpeedPerSec * delta;
+        if (keys.arrowleft) targetTurn += 1;
+        if (keys.arrowright) targetTurn -= 1;
 
-        if (keys.arrowleft) camera.rotation.y += frameTurn;
-        if (keys.arrowright) camera.rotation.y -= frameTurn;
+        if (keys.w || keys.arrowup) targetForward += 1;
+        if (keys.s || keys.arrowdown) targetForward -= 1;
+        if (keys.d) targetRight += 1;
+        if (keys.a) targetRight -= 1;
 
-        let forwardInput = 0;
-        let rightInput = 0;
+        if (Math.abs(touchMoveZ) > 0.01) targetForward += touchMoveZ;
+        if (Math.abs(touchMoveX) > 0.01) targetRight += touchMoveX;
 
-        if (keys.w || keys.arrowup) forwardInput += 1;
-        if (keys.s || keys.arrowdown) forwardInput -= 1;
-        if (keys.d) rightInput += 1;
-        if (keys.a) rightInput -= 1;
-
-        if (Math.abs(touchMoveZ) > 0.12) forwardInput += touchMoveZ;
-        if (Math.abs(touchMoveX) > 0.12) rightInput += touchMoveX;
-
-        const inputMag = Math.hypot(forwardInput, rightInput);
-        let isWalking = false;
-
-        if (inputMag > 0.01) {
-            const scale = inputMag > 1 ? 1 / inputMag : 1;
-            const moveForwardAmt = forwardInput * scale * frameMove;
-            const moveRightAmt = rightInput * scale * frameMove;
-
-            const dx = forwardVector.x * moveForwardAmt + rightVector.x * moveRightAmt;
-            const dz = forwardVector.z * moveForwardAmt + rightVector.z * moveRightAmt;
-
-            isWalking = tryMovePlayer(dx, dz);
+        const inputMag = Math.hypot(targetForward, targetRight);
+        if (inputMag > 1) {
+            targetForward /= inputMag;
+            targetRight /= inputMag;
         }
+    }
 
-        // Subtle First-Person Head-Bob while Walking
-        if (isWalking) {
-            walkBobTimer += delta * 11.0;
-            camera.position.y = baseEyeHeight + Math.sin(walkBobTimer) * 0.032;
-        } else {
-            walkBobTimer = 0;
-            camera.position.y += (baseEyeHeight - camera.position.y) * 0.18;
-        }
+    smoothForwardVel += (targetForward - smoothForwardVel) * moveBlend;
+    smoothRightVel += (targetRight - smoothRightVel) * moveBlend;
+    smoothTurnVel += (targetTurn - smoothTurnVel) * turnBlend;
+
+    if (Math.abs(smoothTurnVel) > 0.0005) {
+        camera.rotation.y += smoothTurnVel * playerTurnSpeedPerSec * delta;
+    }
+    camera.rotation.x += (targetPitch - camera.rotation.x) * turnBlend;
+
+    const currentSpeedRatio = Math.hypot(smoothForwardVel, smoothRightVel);
+    let isWalking = false;
+
+    if (currentSpeedRatio > 0.005) {
+        const moveForwardAmt = smoothForwardVel * playerMoveSpeedPerSec * delta;
+        const moveRightAmt = smoothRightVel * playerMoveSpeedPerSec * delta;
+
+        const dx = forwardVector.x * moveForwardAmt + rightVector.x * moveRightAmt;
+        const dz = forwardVector.z * moveForwardAmt + rightVector.z * moveRightAmt;
+
+        isWalking = tryMovePlayer(dx, dz);
+    }
+
+    if (isWalking) {
+        walkBobTimer += delta * 8.5 * Math.min(currentSpeedRatio, 1);
+        camera.position.y =
+            baseEyeHeight + Math.sin(walkBobTimer) * 0.02 * Math.min(currentSpeedRatio, 1);
+    } else {
+        walkBobTimer = 0;
+        camera.position.y += (baseEyeHeight - camera.position.y) * 0.14;
     }
 
     updateNearbyLights();
@@ -1620,7 +1719,7 @@ function animate() {
             );
 
         if (hasLineOfSight && now > npc.lastGreeted + 10000) {
-            displayGreeting("Hello! Beautiful day for art, isn't it?");
+            displayGreeting(getNextGreetingLine());
             npc.greetingUntil = now + 2800;
             npc.lastGreeted = now;
 
